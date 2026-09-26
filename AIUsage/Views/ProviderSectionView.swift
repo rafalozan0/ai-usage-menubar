@@ -135,6 +135,16 @@ struct BillingUsagePresentation: Equatable {
             valueText = "\(used) spent"
             accessibilityValue = "\(used) spent, no monthly limit"
 
+        case let .balance(amount, currencyCode):
+            let balance = Self.currency(
+                amount,
+                code: currencyCode,
+                locale: locale
+            )
+            title = "Balance"
+            valueText = "\(balance) left"
+            accessibilityValue = "\(balance) balance remaining"
+
         case let .flexCreditBalance(remainingCredits, usdValue):
             let value = Self.currency(
                 usdValue,

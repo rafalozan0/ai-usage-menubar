@@ -90,6 +90,10 @@ final class MemoryKeychain: KeychainAccessing, @unchecked Sendable {
         lock.withLock { currentUser[service] = value }
     }
 
+    func deleteGenericPasswordForCurrentUser(service: String) throws {
+        lock.withLock { _ = currentUser.removeValue(forKey: service) }
+    }
+
     func currentValue(service: String) -> String? {
         lock.withLock { currentUser[service] }
     }

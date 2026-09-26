@@ -137,6 +137,20 @@ AI Usage's no-background-log-scanning design. OpenRouter and Z.ai are also
 excluded because they require users to add API keys instead of reusing a local
 agent login.
 
+## DeepSeek (fork only)
+
+DeepSeek has no CLI login to reuse, so the API key is pasted into Settings and
+stored in a Keychain item owned by AI Usage (service
+`AI Usage DeepSeek API Key`). The provider counts as installed only while that
+key exists.
+
+- `GET https://api.deepseek.com/user/balance`
+- `Authorization: Bearer <api key>`
+
+`balance_infos[].total_balance` (a decimal string) is shown as a remaining
+balance, preferring the `USD` entry and otherwise the first currency. DeepSeek
+exposes no token or usage-history endpoint, so consumption is not tracked.
+
 ## Persistence and failure policy
 
 Rotated credentials are persisted only to the source from which they were

@@ -161,6 +161,13 @@ struct SettingsView: View {
                     .frame(width: 180, alignment: .leading)
                 }
 
+                GridRow {
+                    Text("DeepSeek")
+                        .foregroundStyle(.secondary)
+
+                    DeepSeekAPIKeyField(refresh: { store.refreshNow() })
+                }
+
                 GridRow(alignment: .top) {
                     Text("Startup")
                         .foregroundStyle(.secondary)
@@ -229,6 +236,61 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
             Spacer()
         }
+    }
+}
+
+private struct DeepSeekAPIKeyField: View {
+    let refresh: () -> Void
+    private let keyStore = DeepSeekKeyStore()
+
+    @State private var draft = ""
+    @State private var hasKey = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if hasKey {
+                Label("API key saved", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.secondary)
+                Button("Remove") {
+                    perform { try keyStore.removeKey() }
+                }
+            } else {
+                SecureField("API key", text: $draft)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 180)
+                    .onSubmit(save)
+                Button("Save", action: save)
+                    .disabled(draft.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ).isEmpty)
+            }
+
+            if let errorMessage {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                    .help(errorMessage)
+            }
+        }
+        .controlSize(.small)
+        .help("Shows your DeepSeek API balance. The key is stored in your Keychain.")
+        .onAppear { hasKey = keyStore.hasKey }
+    }
+
+    private func save() {
+        perform { try keyStore.save(draft) }
+    }
+
+    private func perform(_ action: () throws -> Void) {
+        do {
+            try action()
+            draft = ""
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        hasKey = keyStore.hasKey
+        refresh()
     }
 }
 

@@ -8,6 +8,7 @@ enum ProviderID: String, CaseIterable, Codable, Identifiable, Sendable {
     case copilot
     case devin
     case grok
+    case deepseek
 
     var id: Self { self }
 
@@ -20,6 +21,7 @@ enum ProviderID: String, CaseIterable, Codable, Identifiable, Sendable {
         case .copilot: "GitHub Copilot"
         case .devin: "Devin"
         case .grok: "Grok"
+        case .deepseek: "DeepSeek"
         }
     }
 
@@ -32,6 +34,7 @@ enum ProviderID: String, CaseIterable, Codable, Identifiable, Sendable {
         case .copilot: "ProviderCopilot"
         case .devin: "ProviderDevin"
         case .grok: "ProviderGrok"
+        case .deepseek: "ProviderDeepSeek"
         }
     }
 
@@ -55,6 +58,7 @@ enum ProviderID: String, CaseIterable, Codable, Identifiable, Sendable {
         case .copilot: ["copilot", "github-copilot"]
         case .devin: ["devin"]
         case .grok: ["grok"]
+        case .deepseek: []
         }
     }
 
@@ -90,6 +94,9 @@ enum ProviderID: String, CaseIterable, Codable, Identifiable, Sendable {
             ]
         case .grok:
             ["~/.grok"]
+        case .deepseek:
+            // Detected by the presence of a stored API key instead.
+            []
         }
     }
 
@@ -97,6 +104,7 @@ enum ProviderID: String, CaseIterable, Codable, Identifiable, Sendable {
         switch self {
         case .cursor: .totalUsage
         case .copilot: .credits
+        case .deepseek: .credits
         case .claude, .codex, .antigravity, .devin, .grok: .weekly
         }
     }
@@ -325,11 +333,15 @@ enum BillingUsage: Equatable, Sendable {
         remainingCredits: Int,
         usdValue: Double
     )
+    case balance(
+        amount: Double,
+        currencyCode: String
+    )
 
     var menuBarMetric: MenuBarMetricID {
         switch self {
         case .boundedSpend, .unboundedSpend: .extraUsage
-        case .flexCreditBalance: .credits
+        case .flexCreditBalance, .balance: .credits
         }
     }
 
@@ -344,6 +356,8 @@ enum BillingUsage: Equatable, Sendable {
             return .money(amount: amount, currencyCode: currencyCode)
         case let .unboundedSpend(usedAmount, currencyCode):
             return .money(amount: usedAmount, currencyCode: currencyCode)
+        case let .balance(amount, currencyCode):
+            return .money(amount: amount, currencyCode: currencyCode)
         case let .flexCreditBalance(remainingCredits, usdValue):
             return .credits(
                 remaining: remainingCredits,

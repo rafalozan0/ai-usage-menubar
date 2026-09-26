@@ -111,9 +111,14 @@ protocol ProviderAvailabilityChecking: Sendable {
 
 struct SystemProviderAvailabilityChecker: ProviderAvailabilityChecking {
     private let environment: LoginShellEnvironment
+    private let deepSeekKeys: DeepSeekKeyStore
 
-    init(environment: LoginShellEnvironment = .shared) {
+    init(
+        environment: LoginShellEnvironment = .shared,
+        deepSeekKeys: DeepSeekKeyStore = DeepSeekKeyStore()
+    ) {
         self.environment = environment
+        self.deepSeekKeys = deepSeekKeys
     }
 
     func installedProviders() async -> Set<ProviderID>? {
@@ -121,6 +126,7 @@ struct SystemProviderAvailabilityChecker: ProviderAvailabilityChecking {
             let path = environment.value(for: "PATH") ?? ""
 
             return Set(ProviderID.allCases.filter { provider in
+                if provider == .deepseek { return deepSeekKeys.hasKey }
                 let descriptor = provider.descriptor
                 return descriptor.executableNames.contains {
                     Self.containsExecutable(named: $0, searchPath: path)
@@ -245,6 +251,7 @@ protocol KeychainAccessing: Sendable {
     func writeGenericPassword(service: String, value: String) throws
     func readGenericPasswordForCurrentUser(service: String) throws -> String?
     func writeGenericPasswordForCurrentUser(service: String, value: String) throws
+    func deleteGenericPasswordForCurrentUser(service: String) throws
 }
 
 struct SecurityKeychainAccessor: KeychainAccessing {
@@ -280,6 +287,22 @@ struct SecurityKeychainAccessor: KeychainAccessing {
             "-s", service,
             "-w", value
         ])
+    }
+
+    func deleteGenericPasswordForCurrentUser(service: String) throws {
+        let result = try processRunner.run(
+            executable: "/usr/bin/security",
+            arguments: [
+                "delete-generic-password",
+                "-a", currentUserAccount(),
+                "-s", service
+            ],
+            environment: [:],
+            timeout: 5
+        )
+        guard result.succeeded || result.exitCode == Self.itemNotFoundExitCode else {
+            throw KeychainError.writeFailed
+        }
     }
 
     private func readPassword(_ arguments: [String]) throws -> String? {
