@@ -5,15 +5,18 @@ actor DeepSeekProvider: UsageProvider {
 
     private let keyStore: DeepSeekKeyStore
     private let client: DeepSeekUsageClient
+    private let budget: DeepSeekBudgetStore
     private let dateProvider: DateProviding
 
     init(
         keyStore: DeepSeekKeyStore = DeepSeekKeyStore(),
         client: DeepSeekUsageClient = DeepSeekUsageClient(),
+        budget: DeepSeekBudgetStore = DeepSeekBudgetStore(),
         dateProvider: DateProviding = SystemDateProvider()
     ) {
         self.keyStore = keyStore
         self.client = client
+        self.budget = budget
         self.dateProvider = dateProvider
     }
 
@@ -40,8 +43,13 @@ actor DeepSeekProvider: UsageProvider {
                 "DeepSeek rejected the API key. Update it in Settings."
             )
         }
-        return try DeepSeekUsageMapper.map(
-            response: response,
+        let balance = try DeepSeekUsageMapper.balance(from: response)
+        return DeepSeekUsageMapper.snapshot(
+            balance: balance,
+            startingBalance: budget.resolveStartingBalance(
+                current: balance.amount,
+                currencyCode: balance.currencyCode
+            ),
             now: dateProvider.now()
         )
     }

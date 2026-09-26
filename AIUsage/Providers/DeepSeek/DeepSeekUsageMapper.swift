@@ -1,10 +1,12 @@
 import Foundation
 
 enum DeepSeekUsageMapper {
-    static func map(
-        response: HTTPResponse,
-        now: Date
-    ) throws -> ProviderSnapshot {
+    struct Balance: Equatable, Sendable {
+        let amount: Double
+        let currencyCode: String
+    }
+
+    static func balance(from response: HTTPResponse) throws -> Balance {
         guard (200..<300).contains(response.statusCode) else {
             throw ProviderFailure(
                 response.statusCode >= 500 ? .transient : .invalidResponse,
@@ -26,14 +28,36 @@ enum DeepSeekUsageMapper {
                 "DeepSeek balance response changed."
             )
         }
+        return Balance(
+            amount: max(total, 0),
+            currencyCode: currency.uppercased()
+        )
+    }
+
+    /// The bar runs from the starting balance down to zero.
+    static func snapshot(
+        balance: Balance,
+        startingBalance: Double,
+        now: Date
+    ) -> ProviderSnapshot {
+        let start = max(startingBalance, balance.amount)
+        let usedPercent = start > 0
+            ? min(max((start - balance.amount) / start * 100, 0), 100)
+            : 100
 
         return ProviderSnapshot(
             provider: .deepseek,
             planName: "API",
-            windows: [],
+            windows: [
+                QuotaWindow(
+                    kind: .credits,
+                    usedPercent: usedPercent,
+                    resetsAt: nil
+                )
+            ],
             billingUsage: .balance(
-                amount: max(total, 0),
-                currencyCode: currency.uppercased()
+                amount: balance.amount,
+                currencyCode: balance.currencyCode
             ),
             fetchedAt: now
         )

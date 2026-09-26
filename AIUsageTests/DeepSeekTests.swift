@@ -22,39 +22,93 @@ final class DeepSeekTests: XCTestCase {
     }
     """
 
+    private func makeBudget() -> DeepSeekBudgetStore {
+        let defaults = UserDefaults(
+            suiteName: "DeepSeekTests.\(UUID().uuidString)"
+        )!
+        return DeepSeekBudgetStore(defaults: defaults)
+    }
+
     func testMapperPrefersUSDBalance() throws {
-        let snapshot = try DeepSeekUsageMapper.map(
-            response: httpResponse(json: balanceJSON),
-            now: Date()
+        let balance = try DeepSeekUsageMapper.balance(
+            from: httpResponse(json: balanceJSON)
         )
 
-        XCTAssertEqual(snapshot.provider, .deepseek)
-        XCTAssertTrue(snapshot.windows.isEmpty)
         XCTAssertEqual(
-            snapshot.billingUsage,
-            .balance(amount: 12.34, currencyCode: "USD")
+            balance,
+            DeepSeekUsageMapper.Balance(amount: 12.34, currencyCode: "USD")
         )
     }
 
     func testMapperFallsBackToFirstCurrency() throws {
-        let snapshot = try DeepSeekUsageMapper.map(
-            response: httpResponse(json: """
+        let balance = try DeepSeekUsageMapper.balance(
+            from: httpResponse(json: """
             {"balance_infos":[{"currency":"CNY","total_balance":"7.5"}]}
-            """),
-            now: Date()
+            """)
         )
 
         XCTAssertEqual(
-            snapshot.billingUsage,
-            .balance(amount: 7.5, currencyCode: "CNY")
+            balance,
+            DeepSeekUsageMapper.Balance(amount: 7.5, currencyCode: "CNY")
         )
     }
 
     func testMapperRejectsUnexpectedShape() {
-        XCTAssertThrowsError(try DeepSeekUsageMapper.map(
-            response: httpResponse(json: #"{"balance_infos":[]}"#),
-            now: Date()
+        XCTAssertThrowsError(try DeepSeekUsageMapper.balance(
+            from: httpResponse(json: #"{"balance_infos":[]}"#)
         ))
+    }
+
+    func testBarRunsFromStartingBalanceToZero() {
+        let balance = DeepSeekUsageMapper.Balance(
+            amount: 6.95,
+            currencyCode: "USD"
+        )
+        let snapshot = DeepSeekUsageMapper.snapshot(
+            balance: balance,
+            startingBalance: 9.27,
+            now: Date()
+        )
+
+        XCTAssertEqual(snapshot.provider, .deepseek)
+        XCTAssertEqual(snapshot.windows.map(\.kind), [.credits])
+        XCTAssertEqual(
+            snapshot.windows[0].usedPercent,
+            25,
+            accuracy: 0.1
+        )
+        XCTAssertEqual(
+            snapshot.billingUsage,
+            .balance(amount: 6.95, currencyCode: "USD")
+        )
+    }
+
+    func testBarIsEmptyAtZeroBalance() {
+        let snapshot = DeepSeekUsageMapper.snapshot(
+            balance: .init(amount: 0, currencyCode: "USD"),
+            startingBalance: 9.27,
+            now: Date()
+        )
+
+        XCTAssertEqual(snapshot.windows[0].usedPercent, 100)
+    }
+
+    func testBudgetCapturesFirstBalanceAndRaisesOnTopUp() {
+        let budget = makeBudget()
+
+        XCTAssertEqual(
+            budget.resolveStartingBalance(current: 9.27, currencyCode: "USD"),
+            9.27
+        )
+        XCTAssertEqual(
+            budget.resolveStartingBalance(current: 5, currencyCode: "USD"),
+            9.27
+        )
+        XCTAssertEqual(
+            budget.resolveStartingBalance(current: 20, currencyCode: "USD"),
+            20
+        )
+        XCTAssertNil(budget.startingBalance(currencyCode: "CNY"))
     }
 
     func testProviderSendsBearerKeyFromKeychain() async throws {
@@ -64,10 +118,12 @@ final class DeepSeekTests: XCTestCase {
         let http = MockHTTPClient([httpResponse(json: balanceJSON)])
         let provider = DeepSeekProvider(
             keyStore: DeepSeekKeyStore(keychain: keychain),
-            client: DeepSeekUsageClient(http: http)
+            client: DeepSeekUsageClient(http: http),
+            budget: makeBudget()
         )
 
-        _ = try await provider.fetch()
+        let snapshot = try await provider.fetch()
+        XCTAssertEqual(snapshot.windows[0].usedPercent, 0)
 
         let requests = await http.capturedRequests()
         XCTAssertEqual(requests.count, 1)

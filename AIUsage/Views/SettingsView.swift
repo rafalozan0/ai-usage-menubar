@@ -242,18 +242,30 @@ struct SettingsView: View {
 private struct DeepSeekAPIKeyField: View {
     let refresh: () -> Void
     private let keyStore = DeepSeekKeyStore()
+    private let budget = DeepSeekBudgetStore()
 
     @State private var draft = ""
+    @State private var startingBalanceText = ""
     @State private var hasKey = false
     @State private var errorMessage: String?
 
     var body: some View {
         HStack(spacing: 6) {
             if hasKey {
-                Label("API key saved", systemImage: "checkmark.circle.fill")
+                Label("Saved", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.secondary)
+                Text("Start $")
+                    .foregroundStyle(.secondary)
+                TextField("0.00", text: $startingBalanceText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 60)
+                    .onSubmit(saveStartingBalance)
+                    .help("Balance the usage bar starts from. Press Return to save.")
                 Button("Remove") {
-                    perform { try keyStore.removeKey() }
+                    perform {
+                        try keyStore.removeKey()
+                        budget.clear()
+                    }
                 }
             } else {
                 SecureField("API key", text: $draft)
@@ -274,7 +286,26 @@ private struct DeepSeekAPIKeyField: View {
         }
         .controlSize(.small)
         .help("Shows your DeepSeek API balance. The key is stored in your Keychain.")
-        .onAppear { hasKey = keyStore.hasKey }
+        .onAppear {
+            hasKey = keyStore.hasKey
+            loadStartingBalance()
+        }
+    }
+
+    private func loadStartingBalance() {
+        startingBalanceText = budget.startingBalance(currencyCode: "USD")
+            .map { String(format: "%.2f", $0) } ?? ""
+    }
+
+    private func saveStartingBalance() {
+        let normalized = startingBalanceText.replacingOccurrences(of: ",", with: ".")
+        guard let amount = Double(normalized.trimmingCharacters(in: .whitespaces)),
+              amount > 0 else {
+            loadStartingBalance()
+            return
+        }
+        budget.setStartingBalance(amount, currencyCode: "USD")
+        refresh()
     }
 
     private func save() {
@@ -290,6 +321,7 @@ private struct DeepSeekAPIKeyField: View {
             errorMessage = error.localizedDescription
         }
         hasKey = keyStore.hasKey
+        loadStartingBalance()
         refresh()
     }
 }
